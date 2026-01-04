@@ -4,15 +4,13 @@ import base64
 from PIL import Image
 import io
 
-# 1. قاعدة بيانات جديدة تماماً لتجنب الـ OperationalError
+# 1. Database
 def init_db():
-    # غيرنا الاسم لـ bond_v20 عشان يمسح أي خطأ قديم
-    conn = sqlite3.connect('bond_v20.db', check_same_thread=False)
+    conn = sqlite3.connect('bond_mobile_final.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS merchants (name TEXT, code TEXT)')
-    # الجدول ده متظبط عشان يستقبل كل البيانات صح
     c.execute('''CREATE TABLE IF NOT EXISTS products 
-                 (merchant TEXT, name TEXT, category TEXT, price REAL, condition TEXT, description TEXT, image_data TEXT, status TEXT)''')
+                 (merchant TEXT, name TEXT, category TEXT, price REAL, image_data TEXT, status TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS orders (merchant TEXT, product_name TEXT, phone TEXT, address TEXT)''')
     conn.commit()
     return conn
@@ -20,110 +18,148 @@ def init_db():
 conn = init_db()
 c = conn.cursor()
 
-# 2. وظيفة تصغير الصور
+# 2. Image Optimization
 def img_to_b64(file):
     img = Image.open(file).convert("RGB")
-    img.thumbnail((500, 500)) 
+    img.thumbnail((600, 600)) 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
+    img.save(buf, format="JPEG", quality=90)
     return base64.b64encode(buf.getvalue()).decode()
 
-# 3. ستايل الموقع
-st.set_page_config(page_title="BOND STORE", layout="wide")
+# 3. Mobile-First CSS (هنا حل مشكلة الكلام والشكل)
+st.set_page_config(page_title="BOND", layout="wide")
+
 st.markdown("""
     <style>
-    .stApp { background-color: white; color: black; }
-    .header-box { background: black; color: white; padding: 25px; text-align: center; border-radius: 15px; margin-bottom: 20px; }
-    .order-card { border-left: 5px solid #28a745; background: #f0fff4; padding: 15px; border-radius: 8px; margin-bottom: 10px; color: black; }
-    .product-card { border: 1px solid #eee; padding: 15px; border-radius: 15px; margin-bottom: 15px; }
+    /* تكبير الخط العام للموبايل */
+    html, body, [class*="css"] {
+        font-size: 18px !important;
+    }
+    
+    /* ستايل الهيدر */
+    .main-header {
+        background: black;
+        color: white;
+        padding: 20px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 30px;
+        border-radius: 0 0 20px 20px;
+        margin-bottom: 25px;
+    }
+
+    /* كارت المنتج - تعديل للموبايل */
+    .product-card {
+        border: 2px solid #f0f0f0;
+        padding: 15px;
+        border-radius: 20px;
+        margin-bottom: 25px;
+        background-color: white;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+
+    /* تخلي الكلام واضح وكبير */
+    .product-title {
+        font-size: 24px !important;
+        font-weight: bold;
+        color: #111;
+        margin-top: 10px;
+    }
+
+    .price-tag {
+        font-size: 22px !important;
+        color: #28a745;
+        font-weight: bold;
+    }
+
+    /* تكبير أزرار الـ Buy Now للموبايل */
+    div.stButton > button {
+        width: 100% !important;
+        height: 50px !important;
+        font-size: 20px !important;
+        border-radius: 10px !important;
+        background-color: black !important;
+        color: white !important;
+    }
+    
+    /* تظبيط التابات للموبايل */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        font-size: 16px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<div class="header-box"><h1>BOND.</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">BOND STORE</div>', unsafe_allow_html=True)
 
-tabs = st.tabs(["🛒 STORE", "🏪 MERCHANT", "🛠️ ADMIN"])
+t1, t2, t3 = st.tabs(["🛒 SHOP", "🏪 SELLER", "🛠️ ADMIN"])
 
-# --- 🛒 صفحة المتجر (الزبون) ---
-with tabs[0]:
-    cats = ["All", "Watches", "Electronics", "Fashion", "Other"]
-    sel_cat = st.selectbox("Category", cats)
-    
-    query = "SELECT * FROM products" if sel_cat == "All" else "SELECT * FROM products WHERE category=?"
-    params = () if sel_cat == "All" else (sel_cat,)
-    c.execute(query, params)
+with t1:
+    cat = st.selectbox("Choose Category", ["All", "Watches", "Electronics", "Fashion", "Other"])
+    q = "SELECT * FROM products" if cat == "All" else "SELECT * FROM products WHERE category=?"
+    p = () if cat == "All" else (cat,)
+    c.execute(q, p)
     
     for i, item in enumerate(c.fetchall()):
-        with st.container():
-            st.markdown('<div class="product-card">', unsafe_allow_html=True)
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.image(base64.b64decode(item[6]))
-            with col2:
-                st.subheader(item[1])
-                st.write(f"Price: ${item[3]}")
-                if item[7] == "Sold Out": st.error("SOLD OUT")
-                else:
-                    with st.expander("BUY NOW"):
-                        u_phone = st.text_input("Phone", key=f"ph_{i}")
-                        u_addr = st.text_area("Address", key=f"ad_{i}")
-                        if st.button("Order Now", key=f"btn_{i}"):
-                            if u_phone and u_addr:
-                                # حفظ الطلب للتاجر
-                                c.execute("INSERT INTO orders VALUES (?,?,?,?)", (item[0], item[1], u_phone, u_addr))
-                                conn.commit()
-                                st.success("Order Sent!")
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="product-card">', unsafe_allow_html=True)
+        # الصورة تاخد عرض الشاشة
+        st.image(base64.b64decode(item[4]), use_container_width=True)
+        st.markdown(f'<div class="product-title">{item[1]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="price-tag">${item[3]}</div>', unsafe_allow_html=True)
+        
+        if item[5] == "Sold Out":
+            st.error("❌ SOLD OUT")
+        else:
+            with st.expander("👉 CLICK TO ORDER"):
+                ph = st.text_input("Your Phone", key=f"p{i}", placeholder="01xxxxxxxxx")
+                ad = st.text_area("Your Address", key=f"a{i}", placeholder="Street, Building, Flat...")
+                if st.button("CONFIRM ORDER", key=f"b{i}"):
+                    if ph and ad:
+                        c.execute("INSERT INTO orders VALUES (?,?,?,?)", (item[0], item[1], ph, ad))
+                        conn.commit()
+                        st.success("✅ Order sent to merchant!")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 🏪 صفحة التاجر (بيانات الزبائن بتظهر هنا) ---
-with tabs[1]:
-    m_code = st.text_input("Merchant Code", type="password")
-    c.execute("SELECT name FROM merchants WHERE code=?", (m_code,))
+with t2:
+    code = st.text_input("Enter Merchant Code", type="password")
+    c.execute("SELECT name FROM merchants WHERE code=?", (code,))
     auth = c.fetchone()
     if auth:
-        st.success(f"Dashboard: {auth[0]}")
-        
-        # عرض الطلبات (البيانات اللي كنت بتدور عليها)
-        st.subheader("📥 Orders Received")
+        st.header(f"Orders for {auth[0]}")
         c.execute("SELECT rowid, product_name, phone, address FROM orders WHERE merchant=?", (auth[0],))
-        my_orders = c.fetchall()
-        if not my_orders:
-            st.info("No orders found.")
-        else:
-            for rid, p_name, p_phone, p_addr in my_orders:
-                st.markdown(f"""
-                <div class="order-card">
-                    <b>Product:</b> {p_name} <br>
-                    <b>Customer Phone:</b> {p_phone} <br>
-                    <b>Address:</b> {p_addr}
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"Delete Order #{rid}", key=f"del_{rid}"):
+        orders = c.fetchall()
+        for rid, pn, pp, pa in orders:
+            with st.container():
+                st.write(f"📦 **{pn}**")
+                st.write(f"📞 {pp} | 📍 {pa}")
+                if st.button("Complete Order", key=f"d{rid}"):
                     c.execute("DELETE FROM orders WHERE rowid=?", (rid,))
                     conn.commit()
                     st.rerun()
-
+        
         st.divider()
-        with st.expander("➕ Add Product"):
-            with st.form("add_p", clear_on_submit=True):
+        with st.expander("➕ Add New Product"):
+            with st.form("add"):
                 n = st.text_input("Product Name")
                 ct = st.selectbox("Category", ["Watches", "Electronics", "Fashion", "Other"])
-                pr = st.number_input("Price")
-                fl = st.file_uploader("Image")
-                if st.form_submit_button("Submit"):
-                    if n and fl:
-                        b64 = img_to_b64(fl)
-                        # الخانات هنا متوافقة تماماً مع الجدول الجديد
-                        c.execute("INSERT INTO products VALUES (?,?,?,?,?,?,?,?)", (auth[0], n, ct, pr, "New", "", b64, "Available"))
+                pr = st.number_input("Price ($)")
+                img = st.file_uploader("Upload Image")
+                if st.form_submit_button("POST NOW"):
+                    if n and img:
+                        b64 = img_to_b64(img)
+                        c.execute("INSERT INTO products VALUES (?,?,?,?,?,'Available')", (auth[0], n, ct, pr, b64))
                         conn.commit()
                         st.rerun()
 
-# --- 🛠️ صفحة الـ Admin ---
-with tabs[2]:
-    if st.text_input("Admin Key", type="password") == "1515":
-        with st.form("reg"):
-            m_name = st.text_input("Name")
-            m_key = st.text_input("Key")
-            if st.form_submit_button("Register"):
-                c.execute("INSERT INTO merchants VALUES (?,?)", (m_name, m_key))
+with t3:
+    if st.text_input("Admin Password", type="password") == "1515":
+        with st.form("adm"):
+            m_n = st.text_input("Merchant Name")
+            m_c = st.text_input("Merchant Code")
+            if st.form_submit_button("ADD MERCHANT"):
+                c.execute("INSERT INTO merchants VALUES (?,?)", (m_n, m_c))
                 conn.commit()
-                st.success("Merchant Added!")
+                st.success("Merchant added!")
