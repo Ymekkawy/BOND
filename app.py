@@ -1,73 +1,94 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+from PIL import Image
+import io
+import base64
 
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="BOND STORE", layout="wide")
 
-# --- قائمة البيانات الثابتة (عدلها من هنا عشان تثبت) ---
-MERCHANTS_DATA = {
-    "1515": {"name": "Youssef (Owner)", "phone": "201012345678"},
-}
+# 2. الربط بجوجل شيت (ضروري جداً عشان البيانات متمسحش)
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-PRODUCTS = [
-    {"m_code": "1515", "name": "Classic Watch", "price": 1500, "img": "https://via.placeholder.com/300"},
-]
+# دالة لتحويل الصورة لكود نصي (عشان تتخزن في الشيت)
+def img_to_b64(file):
+    img = Image.open(file).convert("RGB")
+    img.thumbnail((300, 300))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return base64.b64encode(buf.getvalue()).decode()
 
-# CSS الموبايل
+# CSS لتحسين شكل الموبايل
 st.markdown("""
     <style>
-    .main-header { background: black; color: white; padding: 20px; text-align: center; font-size: 30px; border-radius: 0 0 20px 20px; }
-    .product-card { border: 2px solid #f0f0f0; padding: 15px; border-radius: 20px; margin-bottom: 25px; background: white; }
-    .stButton > button { width: 100% !important; border-radius: 12px !important; height: 50px !important; }
+    .main-header { background: black; color: white; padding: 20px; text-align: center; font-size: 25px; border-radius: 15px; }
+    .product-card { border: 1px solid #ddd; padding: 10px; border-radius: 15px; margin-bottom: 20px; background: #fff; }
+    .stButton > button { width: 100%; border-radius: 10px; height: 45px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">BOND STORE</div>', unsafe_allow_html=True)
 
-t1, t2, t3 = st.tabs(["🛒 SHOP", "🏪 SELLER", "🛠️ ADMIN"])
+t1, t2, t3 = st.tabs(["🛒 المتجر", "🏪 لوحة التاجر", "🛠️ المطور"])
 
-# --- صفحة المتجر ---
+# --- 1. صفحة المتجر (الزبائن) ---
 with t1:
-    for i, p in enumerate(PRODUCTS):
-        merchant = MERCHANTS_DATA.get(p['m_code'], {"name": "Unknown", "phone": "2010"})
-        st.markdown('<div class="product-card">', unsafe_allow_html=True)
-        st.image(p['img'], use_container_width=True)
-        st.subheader(p['name'])
-        st.write(f"Price: {p['price']} EGP")
-        with st.expander("ORDER NOW"):
-            n = st.text_input("Name", key=f"n{i}")
-            wa_url = f"https://wa.me/{merchant['phone']}?text=Order:%20{p['name']}"
-            st.markdown(f'<a href="{wa_url}" target="_blank"><button style="width:100%;height:45px;background:#25D366;color:white;border:none;border-radius:10px;">WhatsApp Order</button></a>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    try:
+        df = conn.read(worksheet="Products")
+        if not df.empty:
+            for i, row in df.iterrows():
+                st.markdown('<div class="product-card">', unsafe_allow_html=True)
+                if row['image']:
+                    st.image(base64.b64decode(row['image']), use_container_width=True)
+                st.subheader(row['name'])
+                st.write(f"السعر: {row['price']} EGP")
+                
+                with st.expander("اطلب الآن"):
+                    c_name = st.text_input("اسمك", key=f"cn{i}")
+                    # الأوردر هيروح لرقم التاجر اللي هو ضافه بنفسه
+                    msg = f"طلب جديد: {row['name']}\nالاسم: {c_name}"
+                    wa_url = f"https://wa.me/{row['merchant_phone']}?text={msg.replace(' ', '%20')}"
+                    st.markdown(f'<a href="{wa_url}" target="_blank"><button style="background:#25D366;color:white;border:none;width:100%;padding:10px;border-radius:10px;">تأكيد عبر واتساب</button></a>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.info("لا توجد منتجات حالياً.")
+    except:
+        st.warning("في انتظار إضافة أول منتج...")
 
-# --- صفحة التاجر ---
+# --- 2. لوحة التاجر (التاجر يضيف بياناته ومنتجاته) ---
 with t2:
-    code = st.text_input("Merchant Code", type="password")
-    if code in MERCHANTS_DATA:
-        st.success(f"Welcome {MERCHANTS_DATA[code]['name']}")
-        st.write("Your items are live!")
-
-# --- صفحة الـ ADMIN (خانات الـ Developer اللي طلبتها) ---
-with t3:
-    if st.text_input("Dev Pass", type="password") == "1515":
-        st.header("Developer Tools")
+    st.header("إضافة منتج جديد")
+    with st.form("add_product"):
+        m_phone = st.text_input("رقم واتسابك (ابدأ بـ 20)", placeholder="2010xxxxxxx")
+        p_name = st.text_input("اسم المنتج")
+        p_price = st.number_input("السعر", min_value=0)
+        p_img = st.file_uploader("ارفع صورة المنتج", type=['jpg', 'png', 'jpeg'])
         
-        # خانة إضافة تاجر
-        with st.expander("➕ Add New Merchant"):
-            m_id = st.text_input("New Merchant Code")
-            m_name = st.text_input("Merchant Name")
-            m_phone = st.text_input("Phone (start with 20)")
-            if st.button("Generate Merchant Code"):
-                new_line = f'"{m_id}": {{"name": "{m_name}", "phone": "{m_phone}"}},'
-                st.code(new_line, language="python")
-                st.info("Copy this line and paste it into MERCHANTS_DATA in GitHub")
+        submit = st.form_submit_button("نشر المنتج في المتجر")
+        
+        if submit:
+            if m_phone and p_name and p_img:
+                img_b64 = img_to_b64(p_img)
+                # حفظ البيانات في شيت جوجل
+                new_data = pd.DataFrame([{"merchant_phone": m_phone, "name": p_name, "price": p_price, "image": img_b64}])
+                try:
+                    existing_df = conn.read(worksheet="Products")
+                    updated_df = pd.concat([existing_df, new_data], ignore_index=True)
+                except:
+                    updated_df = new_data
+                
+                conn.update(worksheet="Products", data=updated_df)
+                st.success("تم نشر منتجك بنجاح!")
+            else:
+                st.error("من فضلك أكمل كافة البيانات وارفع الصورة.")
 
-        # خانة إضافة منتج
-        with st.expander("📦 Add New Product"):
-            p_m_code = st.text_input("Merchant Code for Product")
-            p_name = st.text_input("Product Name")
-            p_price = st.number_input("Price", min_value=0)
-            p_img = st.text_input("Image URL")
-            if st.button("Generate Product Code"):
-                new_p = f'{{"m_code": "{p_m_code}", "name": "{p_name}", "price": {p_price}, "img": "{p_img}"}},'
-                st.code(new_p, language="python")
-                st.info("Copy this line and paste it into PRODUCTS in GitHub")
+# --- 3. المطور (للمراجعة فقط) ---
+with t3:
+    if st.text_input("كلمة سر المطور", type="password") == "1515":
+        st.write("جميع المنتجات المسجلة في قاعدة البيانات:")
+        try:
+            df = conn.read(worksheet="Products")
+            st.dataframe(df[['merchant_phone', 'name', 'price']])
+        except:
+            st.write("القاعدة خالية.")
