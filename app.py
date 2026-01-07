@@ -5,7 +5,7 @@ import base64
 # --- 1. بيانات الربط (تأكد إنها صحيحة 100% من غير مسافات) ---
 URL = "https://lkzyubzuunlnkyaqqwzi.supabase.co"
 # انسخ الكود اللي بيبدأ بـ sb_publishable وحطه هنا
-KEY = "sb_publishable_GrCY2EOqAWGddZUteIvEzA_O_D0T..." 
+KEY = "sb_publishable_GrCY2EOqAWGdDZUteIvEzA_O_D0TxQ3" 
 
 try:
     supabase = create_client(URL, KEY)
@@ -53,3 +53,4 @@ if menu == "🛠️ ADMIN":
                         st.rerun()
         except:
             st.warning("No merchants found in the database yet.")
+
