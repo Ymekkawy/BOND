@@ -5,7 +5,7 @@ import json
 
 # --- CONFIGURATION ---
 # Replace with your actual GitHub Token and Repo
-GITHUB_TOKEN = "YOUR_GITHUB_TOKEN_HERE" 
+GITHUB_TOKEN = "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" 
 REPO_NAME = "ymekkawy/bond" 
 
 st.set_page_config(page_title="BOND STORE", layout="wide")
@@ -90,3 +90,4 @@ with tabs[2]:
         if st.button("Clear All Data"):
             save_data({"merchants": {}, "products": []})
             st.warning("All data has been wiped.")
+
