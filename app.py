@@ -1,94 +1,92 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-from PIL import Image
-import io
 import base64
+from github import Github
+import json
 
-# 1. إعدادات الصفحة
+# --- CONFIGURATION ---
+# Replace with your actual GitHub Token and Repo
+GITHUB_TOKEN = "YOUR_GITHUB_TOKEN_HERE" 
+REPO_NAME = "ymekkawy/bond" 
+
 st.set_page_config(page_title="BOND STORE", layout="wide")
 
-# 2. الربط بجوجل شيت (ضروري جداً عشان البيانات متمسحش)
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# دالة لتحويل الصورة لكود نصي (عشان تتخزن في الشيت)
-def img_to_b64(file):
-    img = Image.open(file).convert("RGB")
-    img.thumbnail((300, 300))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    return base64.b64encode(buf.getvalue()).decode()
-
-# CSS لتحسين شكل الموبايل
-st.markdown("""
-    <style>
-    .main-header { background: black; color: white; padding: 20px; text-align: center; font-size: 25px; border-radius: 15px; }
-    .product-card { border: 1px solid #ddd; padding: 10px; border-radius: 15px; margin-bottom: 20px; background: #fff; }
-    .stButton > button { width: 100%; border-radius: 10px; height: 45px; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.markdown('<div class="main-header">BOND STORE</div>', unsafe_allow_html=True)
-
-t1, t2, t3 = st.tabs(["🛒 المتجر", "🏪 لوحة التاجر", "🛠️ المطور"])
-
-# --- 1. صفحة المتجر (الزبائن) ---
-with t1:
+# Function to load data from GitHub
+def load_data():
     try:
-        df = conn.read(worksheet="Products")
-        if not df.empty:
-            for i, row in df.iterrows():
-                st.markdown('<div class="product-card">', unsafe_allow_html=True)
-                if row['image']:
-                    st.image(base64.b64decode(row['image']), use_container_width=True)
-                st.subheader(row['name'])
-                st.write(f"السعر: {row['price']} EGP")
-                
-                with st.expander("اطلب الآن"):
-                    c_name = st.text_input("اسمك", key=f"cn{i}")
-                    # الأوردر هيروح لرقم التاجر اللي هو ضافه بنفسه
-                    msg = f"طلب جديد: {row['name']}\nالاسم: {c_name}"
-                    wa_url = f"https://wa.me/{row['merchant_phone']}?text={msg.replace(' ', '%20')}"
-                    st.markdown(f'<a href="{wa_url}" target="_blank"><button style="background:#25D366;color:white;border:none;width:100%;padding:10px;border-radius:10px;">تأكيد عبر واتساب</button></a>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.info("لا توجد منتجات حالياً.")
-    except:
-        st.warning("في انتظار إضافة أول منتج...")
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+        contents = repo.get_contents("database.json")
+        return json.loads(contents.decoded_content.decode())
+    except Exception:
+        # Initial structure if file doesn't exist
+        return {"merchants": {}, "products": []}
 
-# --- 2. لوحة التاجر (التاجر يضيف بياناته ومنتجاته) ---
-with t2:
-    st.header("إضافة منتج جديد")
-    with st.form("add_product"):
-        m_phone = st.text_input("رقم واتسابك (ابدأ بـ 20)", placeholder="2010xxxxxxx")
-        p_name = st.text_input("اسم المنتج")
-        p_price = st.number_input("السعر", min_value=0)
-        p_img = st.file_uploader("ارفع صورة المنتج", type=['jpg', 'png', 'jpeg'])
+# Function to save data to GitHub
+def save_data(data):
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    try:
+        contents = repo.get_contents("database.json")
+        repo.update_file(contents.path, "Update Store Data", json.dumps(data, indent=4), contents.sha)
+    except Exception:
+        repo.create_file("database.json", "Initial database creation", json.dumps(data, indent=4))
+
+st.markdown('<div style="background:black;color:white;padding:20px;text-align:center;font-size:30px;border-radius:0 0 20px 20px;">BOND STORE</div>', unsafe_allow_html=True)
+
+# Load current data
+current_data = load_data()
+
+tabs = st.tabs(["🛒 SHOP", "🏪 SELLER", "🛠️ ADMIN"])
+
+# --- 1. SHOP TAB (Customer View) ---
+with tabs[0]:
+    if not current_data["products"]:
+        st.info("The store is currently empty.")
+    else:
+        for i, p in enumerate(current_data["products"]):
+            st.markdown('<div style="border:1px solid #ddd;padding:15px;border-radius:15px;margin-bottom:20px;">', unsafe_allow_html=True)
+            # Display the uploaded product image
+            if "image" in p:
+                st.image(base64.b64decode(p['image']), use_container_width=True)
+            st.subheader(p['name'])
+            st.write(f"Price: {p['price']} EGP")
+            
+            with st.expander("ORDER NOW"):
+                u_name = st.text_input("Your Name", key=f"user_{i}")
+                # WhatsApp link goes to the specific merchant's phone
+                order_msg = f"New Order: {p['name']}\nCustomer: {u_name}"
+                wa_url = f"https://wa.me/{p['phone']}?text={order_msg.replace(' ', '%20')}"
+                st.markdown(f'<a href="{wa_url}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:12px;border-radius:10px;cursor:pointer;font-weight:bold;">Confirm via WhatsApp</button></a>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 2. SELLER TAB (Add Products) ---
+with tabs[1]:
+    st.header("Seller Dashboard")
+    with st.form("seller_form"):
+        prod_name = st.text_input("Product Name")
+        prod_price = st.number_input("Price (EGP)", min_value=0)
+        prod_phone = st.text_input("Your WhatsApp Number (e.g., 2010...)")
+        prod_img = st.file_uploader("Upload Product Image", type=['jpg', 'png', 'jpeg'])
         
-        submit = st.form_submit_button("نشر المنتج في المتجر")
-        
-        if submit:
-            if m_phone and p_name and p_img:
-                img_b64 = img_to_b64(p_img)
-                # حفظ البيانات في شيت جوجل
-                new_data = pd.DataFrame([{"merchant_phone": m_phone, "name": p_name, "price": p_price, "image": img_b64}])
-                try:
-                    existing_df = conn.read(worksheet="Products")
-                    updated_df = pd.concat([existing_df, new_data], ignore_index=True)
-                except:
-                    updated_df = new_data
-                
-                conn.update(worksheet="Products", data=updated_df)
-                st.success("تم نشر منتجك بنجاح!")
+        if st.form_submit_button("Publish Product"):
+            if prod_name and prod_phone and prod_img:
+                img_encoded = base64.b64encode(prod_img.read()).decode()
+                new_entry = {
+                    "name": prod_name,
+                    "price": prod_price,
+                    "phone": prod_phone,
+                    "image": img_encoded
+                }
+                current_data["products"].append(new_entry)
+                save_data(current_data)
+                st.success("Product published successfully! It will not be deleted.")
             else:
-                st.error("من فضلك أكمل كافة البيانات وارفع الصورة.")
+                st.error("Please fill all fields and upload an image.")
 
-# --- 3. المطور (للمراجعة فقط) ---
-with t3:
-    if st.text_input("كلمة سر المطور", type="password") == "1515":
-        st.write("جميع المنتجات المسجلة في قاعدة البيانات:")
-        try:
-            df = conn.read(worksheet="Products")
-            st.dataframe(df[['merchant_phone', 'name', 'price']])
-        except:
-            st.write("القاعدة خالية.")
+# --- 3. ADMIN TAB (Developer Settings) ---
+with tabs[2]:
+    if st.text_input("Admin Password", type="password") == "1515":
+        st.subheader("Manage Database")
+        if st.button("Clear All Data"):
+            save_data({"merchants": {}, "products": []})
+            st.warning("All data has been wiped.")
