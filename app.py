@@ -2,99 +2,99 @@ import streamlit as st
 from supabase import create_client
 import base64
 
-# --- 1. CONNECTION (Your URL is already here) ---
+# --- اتصال مباشر وجاهز برابط مشروعك ---
 SUPABASE_URL = "https://lkzyubzuunlnkyaqqwzi.supabase.co"
-# Paste your KEY here (the one starting with sb_publishable)
+# انسخ الكود اللي بيبدأ بـ sb_publishable من صورتك وحطه هنا
 SUPABASE_KEY = "sb_publishable_GrCY2EOqAWGddZUteIvEzA_O_D0T..." 
 
 try:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 except:
-    st.error("Check your Supabase Key!")
+    st.error("Please update your Supabase Key in the code.")
 
 st.set_page_config(page_title="BOND STORE", layout="wide")
 
-# UI Header
+# تصميم العنوان
 st.markdown('<h1 style="text-align:center; background:black; color:white; padding:20px; border-radius:15px;">BOND STORE</h1>', unsafe_allow_html=True)
 
-# Navigation Menu
-menu = st.sidebar.selectbox("Go to:", ["🛒 SHOP", "🏪 SELLER LOGIN", "🛠️ ADMIN"])
+# القائمة الجانبية للتنقل
+menu = st.sidebar.selectbox("Menu", ["🛒 SHOP", "🏪 SELLER LOGIN", "🛠️ ADMIN"])
 
-# --- 2. SHOP (Customer View) ---
+# --- 1. صفحة العرض (SHOP) ---
 if menu == "🛒 SHOP":
     try:
         res = supabase.table("products").select("*").execute()
         items = res.data
         if not items:
-            st.info("Store is empty. Admin needs to authorize sellers first.")
+            st.info("The store is currently empty. Merchants must add products first.")
         else:
             for p in items:
-                with st.container():
-                    st.markdown('<div style="border:1px solid #ddd; padding:15px; border-radius:15px; margin-bottom:20px;">', unsafe_allow_html=True)
-                    if p.get('image'):
-                        st.image(base64.b64decode(p['image']), use_container_width=True)
-                    st.subheader(p['name'])
-                    st.write(f"**Price:** {p['price']} EGP")
-                    st.markdown(f'<a href="https://wa.me/{p["phone"]}" target="_blank"><button style="width:100%; background:#25D366; color:white; border:none; padding:10px; border-radius:10px; font-weight:bold; cursor:pointer;">Order via WhatsApp</button></a>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div style="border:1px solid #ddd; padding:15px; border-radius:15px; margin-bottom:20px;">', unsafe_allow_html=True)
+                if p.get('image'):
+                    st.image(base64.b64decode(p['image']), use_container_width=True)
+                st.subheader(p['name'])
+                st.write(f"**Price:** {p['price']} EGP")
+                st.markdown(f'<a href="https://wa.me/{p["phone"]}" target="_blank"><button style="width:100%; background:#25D366; color:white; border:none; padding:10px; border-radius:10px; font-weight:bold; cursor:pointer;">Order via WhatsApp</button></a>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
     except:
-        st.warning("Store is being initialized...")
+        st.warning("Store is empty or still initializing...")
 
-# --- 3. SELLER LOGIN (For Merchants) ---
+# --- 2. دخول التجار (SELLER LOGIN) ---
 elif menu == "🏪 SELLER LOGIN":
-    st.header("Merchant Login")
+    st.header("Merchant Access")
     pwd = st.text_input("Enter Merchant Code", type="password")
     
-    # Validation from database
     try:
-        merchants = supabase.table("merchants").select("code").execute().data
-        allowed_codes = [m['code'] for m in merchants]
+        # بيجيب الأكواد اللي إنت (الأدمن) سمحت بيها من الجدول
+        merchants_res = supabase.table("merchants").select("code").execute()
+        allowed_codes = [m['code'] for m in merchants_res.data]
         
         if pwd in allowed_codes:
-            st.success("Welcome! Add your product details:")
-            with st.form("add_product_form"):
-                p_name = st.text_input("Product Name")
-                p_price = st.number_input("Price (EGP)", min_value=0)
-                p_phone = st.text_input("WhatsApp (ex: 2010...)")
-                p_file = st.file_uploader("Product Image", type=['jpg', 'png'])
-                if st.form_submit_button("Publish Product"):
-                    if p_file and p_name:
-                        img_str = base64.b64encode(p_file.read()).decode()
-                        supabase.table("products").insert({"name": p_name, "price": p_price, "phone": p_phone, "image": img_str}).execute()
-                        st.success("Product is now LIVE!")
+            st.success("Access Granted!")
+            with st.form("add_product"):
+                name = st.text_input("Product Name")
+                price = st.number_input("Price", min_value=0)
+                phone = st.text_input("WhatsApp Number")
+                file = st.file_uploader("Upload Image", type=['jpg', 'png'])
+                if st.form_submit_button("Publish Now"):
+                    if file and name:
+                        img_str = base64.b64encode(file.read()).decode()
+                        supabase.table("products").insert({"name": name, "price": price, "phone": phone, "image": img_str}).execute()
+                        st.success("Product is live!")
                     else: st.error("Please fill all fields.")
         elif pwd:
-            st.error("Invalid code. Please contact Admin.")
+            st.error("Invalid code. Ask Admin for your code.")
     except:
-        st.error("Admin has not authorized any merchants yet.")
+        st.error("No merchants registered in the system yet. Admin must add a merchant first.")
 
-# --- 4. ADMIN (Full Control - Password: 1515) ---
+# --- 3. لوحة تحكم الأدمن (ADMIN - Password: 1515) ---
 elif menu == "🛠️ ADMIN":
-    st.header("Admin Panel")
-    admin_pwd = st.text_input("Admin Password", type="password")
-    if admin_pwd == "1515":
-        # Add Merchant
-        st.subheader("Manage Sellers")
-        with st.form("add_merchant"):
-            m_name = st.text_input("Seller Name")
-            m_code = st.text_input("Create Secret Code")
-            if st.form_submit_button("Add Seller"):
-                supabase.table("merchants").insert({"name": m_name, "code": m_code}).execute()
-                st.success(f"Seller '{m_name}' added successfully.")
-                st.rerun()
+    st.header("Admin Dashboard")
+    if st.text_input("Admin Password", type="password") == "1515":
+        # إضافة تاجر
+        st.subheader("Manage Merchant Access")
+        with st.form("add_m"):
+            m_name = st.text_input("Merchant Name")
+            m_code = st.text_input("Create Code for this Merchant")
+            if st.form_submit_button("Authorize Merchant"):
+                try:
+                    supabase.table("merchants").insert({"name": m_name, "code": m_code}).execute()
+                    st.success(f"Merchant '{m_name}' can now login!")
+                except:
+                    st.error("Make sure you created the 'merchants' table in Supabase.")
 
-        # View and Remove Merchants
+        # عرض ومسح التجار (التحكم في الـ Access)
         try:
-            current_m = supabase.table("merchants").select("*").execute().data
-            for m in current_m:
-                col1, col2 = st.columns([3, 1])
-                col1.write(f"👤 {m['name']} (Code: {m['code']})")
-                if col2.button("Remove Access", key=f"del_{m['id']}"):
+            merchants = supabase.table("merchants").select("*").execute().data
+            for m in merchants:
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"👤 {m['name']} (Code: {m['code']})")
+                if c2.button("Remove Access", key=f"del_{m['id']}"):
                     supabase.table("merchants").delete().eq("id", m['id']).execute()
                     st.rerun()
         except:
-            st.info("No sellers found.")
+            st.info("No merchants authorized yet.")
 
-        if st.button("Delete All Products (Wipe Store)"):
+        if st.button("Wipe Store Data (Delete Products)"):
             supabase.table("products").delete().neq("id", 0).execute()
-            st.success("All products deleted.")
+            st.success("Cleared.")
